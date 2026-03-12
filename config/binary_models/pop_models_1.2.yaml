@@ -1,0 +1,27 @@
+bounds:
+  log10_Mcr_min: 7
+  log10_Mcr_max: 11
+  z_min: 0
+  z_max: 4
+
+models:
+  - name: M1
+    alpha: -0.5
+    log10_M_star: 8.5
+    beta: 1.5
+    z0: 1.1
+    n0_dot: 1.83e-4 # / u.Gyr / u.Mpc ** 3
+
+  - name: M2
+    alpha: -1
+    log10_M_star: 9
+    beta: 1
+    z0: .5
+    n0_dot: 2.25e-6 # / u.Gyr / u.Mpc ** 3
+
+  - name: M3
+    alpha: .5
+    log10_M_star: 9.3
+    beta: .5
+    z0: 1
+    n0_dot: 1.26e-3 # / u.Gyr / u.Mpc ** 3

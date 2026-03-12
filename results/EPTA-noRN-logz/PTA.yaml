@@ -1,0 +1,13 @@
+N_ToA: 731
+Npsr: 25
+Nyear: 10
+RMS: 1.0e-06
+Ta_max: 12840.8
+cadence: 5
+frac_RN: 0.0
+gamma_RN: null
+gaps: false
+isotropic: false
+log10_A_RN: null
+orf: crn
+psrs_pos: EPTA-DR2

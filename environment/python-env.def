@@ -1,0 +1,29 @@
+Bootstrap: docker
+From: python:3.12-slim
+
+%post
+    apt-get update
+    apt-get install -y \
+        git \
+        build-essential \
+        libsuitesparse-dev
+    rm -rf /var/lib/apt/lists/*
+
+    python -m venv /opt/venv
+    . /opt/venv/bin/activate
+    pip install --upgrade pip
+    pip install -r /requirements.txt
+
+    git clone https://github.com/mfalxa/fakepta.git
+    cd fakepta
+    python3 setup.py install
+
+%files
+    requirements.txt /requirements.txt
+
+%environment
+    export PATH=/opt/venv/bin:$PATH
+
+%runscript
+    exec "$@"
+

@@ -1,0 +1,12 @@
+
+Npsr: 25
+Nyear: 10
+cadence: 5 # in days
+RMS: 1.0e-6 # in s
+gaps: False
+frac_RN: 0. # Fraction of psr with not null RN
+log10_A_RN: ~
+gamma_RN: ~
+psrs_pos: 'EPTA-DR2'
+isotropic: False
+orf: 'crn'

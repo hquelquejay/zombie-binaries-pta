@@ -1,0 +1,14 @@
+N_bin: 110
+N_zombies_per_bin: 12000
+PTA_config: IPTA-noRN-nogaps
+SNR_thresh: 3
+bounds:
+  log10_Mcr_max: 11
+  log10_Mcr_min: 7
+  logz: true
+  z_max: 4.1
+  z_min: 0.01
+evolve: true
+fth: 3.0e-07
+hc_ref: 3.0e-15
+seed: 42
