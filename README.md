@@ -1,6 +1,6 @@
 # Zombie binaries in PTA
 
-Scripts and data supporting the findings of TBD.
+Scripts and data supporting the findings of [https://arxiv.org/pdf/2604.20975](https://arxiv.org/pdf/2604.20975).
 
 ## Scripts
 
