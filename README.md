@@ -21,6 +21,7 @@ This reads the YAML run settings, loads the PTA definition named by `PTA_config`
 The `PTA_config` entry in each YAML file should match a filename in `config/PTA/`.
 
 The paper figures can be regenerated with `paper-figures.ipynb`.
+NOTE: In order to run the `paper-figures.ipynb` notebook, the results files must be downloaded from the [`PRD version` release](https://github.com/hquelquejay/zombie-binaries-pta/releases/tag/v1).
 
 ## Data
 
