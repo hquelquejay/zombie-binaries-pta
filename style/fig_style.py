@@ -4,9 +4,8 @@
 # ============================================================
 
 import matplotlib as mpl
-import matplotlib.pyplot as plt
-from matplotlib.ticker import LogLocator, NullFormatter
 from cycler import cycler
+from matplotlib.ticker import LogLocator, NullFormatter
 
 # ------------------------------------------------------------
 # Colorblind-friendly palette (Okabe–Ito, APS-safe)
@@ -71,6 +70,22 @@ mpl.rcParams.update({
 # Helper for log axes with proper ticks + grids
 # ------------------------------------------------------------
 def set_log_axes(ax, xlog=False, ylog=False):
+    """Apply logarithmic axis scaling and compatible minor/major grid styling.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axes object to style.
+    xlog : bool, optional
+        If True, use a logarithmic x-axis.
+    ylog : bool, optional
+        If True, use a logarithmic y-axis.
+
+    Returns
+    -------
+    None
+        The input axes are updated in place.
+    """
     if xlog:
         ax.set_xscale("log")
         ax.xaxis.set_major_locator(LogLocator(base=10))

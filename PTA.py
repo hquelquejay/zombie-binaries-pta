@@ -6,52 +6,61 @@ from enterprise.signals import gp_signals, signal_base
 from enterprise_extensions import model_utils
 from enterprise_extensions.blocks import (common_red_noise_block,
                                           red_noise_block, white_noise_block)
-from fakepta.fake_pta import Pulsar
+from fakepta.fake_pta import make_fake_array
 
 
 def get_N_ToAs_for_exact_Tobs(Tobs: float, fsamp_0: float) -> float:
-    """
-    Compute the number of ToAs associated to a given 
-    observing duration and sampling frequency
+    """Return the number of timing samples for a given observing span and cadence.
 
-    Args:
-        Tobs (float): Observing duration
-        fsamp_0 (float): Sampling frequency
+    Parameters
+    ----------
+    Tobs : float
+        Total observing duration.
+    fsamp_0 : float
+        Sampling frequency of the PTA data.
 
-    Returns:
-        float: Number of ToAs
+    Returns
+    -------
+    float
+        Integer number of ToAs implied by the requested sampling.
     """
     # Compute closest f_samp to get integer number of ToAs
     N_tilde = (Tobs * fsamp_0).value
 
+    # NOTE: Don't need realistic f_samp as we concentrate on low frequency candidates
     N_ToAs = np.rint(N_tilde) + 1
 
     return int(N_ToAs)
 
-
 def get_nbin_from_Tobs(Tobs: float, fmax: float) -> float:
-    """
-    Get the number of Fourier bin to reach fmax starting from Tobs 
-    with a linear frequency grid
+    """Return the number of Fourier bins needed to reach a given maximum frequency.
 
-    Args:
-        Tobs (float): Observing time of the PTA
-        fmax (float): Target maximum frequency 
+    Parameters
+    ----------
+    Tobs : float
+        Observing time baseline.
+    fmax : float
+        Maximum search frequency.
 
-    Returns:
-        float: Number of Fourier bins
+    Returns
+    -------
+    float
+        Number of frequency bins in the corresponding linear grid.
     """
     return int(np.rint(Tobs * fmax))
 
 def get_pta_noisedict(psrs: list) -> dict:
-    """
-    Update the pta object noise dictionary
+    """Return the combined noise dictionary for all pulsars in a PTA.
 
-    Args:
-        psrs (list): List of pulsar objects
+    Parameters
+    ----------
+    psrs : list
+        List of pulsar objects containing noise metadata.
 
-    Returns:
-        dict: PTA noisedict dictionary
+    Returns
+    -------
+    dict
+        Noise dictionary for the full PTA.
     """
     pta_noisedict = {}
     for psr in psrs:
@@ -71,26 +80,41 @@ def init_GWB_pta(psrs,
                  frac_RN=0.,
                  gamma_RN=None,
                  orf=None):
-    """
-    Initialize an enterprise PTA object with GWB noise and individual pulsar noise models.
+    """Construct a PTA model including a common gravitational-wave background and pulsar noise.
 
-    Args:
-        psrs (list): List of pulsar objects from fakepta.
-        GWB_psd (str, optional): Power spectral density model for the GWB. Default is 'powerlaw'.
-        noisedict (dict, optional): Dictionary of noise parameters. If None, uses default from pulsars.
-        white_vary (bool, optional): Whether to vary white noise parameters. Default is False.
-        components (int, optional): Number of frequency components for red noise. Default is 30.
-        tnequad (bool, optional): Whether to include TNEQUAD in white noise. Default is False.
-        GWB_Tspan (float, optional): Time span for GWB frequency sampling. If None, uses maximum Tspan from pulsars.
-        select (str, optional): Backend selection for white noise. Default is 'backend'.
-        tm_marg (bool, optional): Whether to use marginalizing timing model. Default is False.
-        tm_svd (bool, optional): Whether to use SVD in timing model. Default is True.
-        frac_RN (float, optional): Fraction of pulsars with red noise. Default is 0.0.
-        gamma_RN (float, optional): Spectral index for red noise. Required if frac_RN > 0.
-        orf (str or callable, optional): Overlap reduction function for GWB. Default is None.
+    Parameters
+    ----------
+    psrs : list
+        Pulsar objects included in the PTA.
+    GWB_psd : str, optional
+        Power spectral density model for the common red-noise process.
+    noisedict : dict, optional
+        Default pulsar-noise parameters to apply to the PTA.
+    white_vary : bool, optional
+        If True, allow white-noise amplitudes to vary.
+    components : int, optional
+        Number of Fourier components used in the red-noise basis.
+    tnequad : bool, optional
+        If True, include a time-correlated noise term.
+    GWB_Tspan : float, optional
+        Time baseline used to define the common-noise frequency grid.
+    select : str, optional
+        Backend selection used in white-noise blocks.
+    tm_marg : bool, optional
+        If True, use a marginalized timing model.
+    tm_svd : bool, optional
+        If True, stabilize the timing-model design matrix with SVD.
+    frac_RN : float, optional
+        Fraction of pulsars assigned an individual red-noise component.
+    gamma_RN : float, optional
+        Power-law slope for the per-pulsar red-noise process.
+    orf : callable, optional
+        Overlap reduction function for the common background.
 
-    Returns:
-        PTA: Enterprise PTA object with the specified models.
+    Returns
+    -------
+    enterprise.signals.signal_base.PTA
+        PTA object ready for likelihood evaluation.
     """
 
     # For common red noise, if not specified find the maximum Tspan to set GW frequency sampling
@@ -146,17 +170,20 @@ def init_GWB_pta(psrs,
 
 
 def build_CholFactors(pta, pta_params):
+    """Build the Cholesky factors of the PTA covariance matrices for each pulsar.
+
+    Parameters
+    ----------
+    pta : object
+        Enterprise PTA object.
+    pta_params : dict
+        PTA parameter dictionary used to evaluate the model.
+
+    Returns
+    -------
+    ndarray
+        Cholesky factors for each pulsar covariance matrix.
     """
-    Construct and save the cholesky decomposition used in the SNR computations
-
-    Args:
-        pta (object): Enterprise PTA object
-        pta_params (dict): PTA noise dictionary
-
-    Returns:
-        np.ndarray: Array of the Cholesky factorization of each pulsar
-    """
-
     # Initialize the list to store Cholesky Factorizations
     Sig_cf_s = []
 
@@ -180,152 +207,27 @@ def build_CholFactors(pta, pta_params):
     return np.array(Sig_cf_s) # (Npsr, N_basis, N_basis)
 
 
-def make_fake_array(npsrs=25, Tobs=None, ntoas=None, gaps=True, toaerr=None, pdist=None, 
-                    freqs=[1400], isotropic=False, backends=None, noisedict=None, 
-                    custom_model=None, ephem=None):
-    """
-    Create a fake array of pulsar objects with specified observational properties.
-
-    This function is adapted from the fake_pta package.
-
-    Args:
-        npsrs (int, optional): Number of pulsars to generate. Defaults to 25.
-        Tobs (float or array-like, optional): Observation time for each pulsar in years. If float, uses the same for all. If None, random between 10-20 years. Defaults to None.
-        ntoas (int or array-like, optional): Number of time-of-arrival (TOA) measurements per pulsar. If int, uses the same for all. If None, computed based on cadence. Defaults to None.
-        gaps (bool, optional): Whether to introduce gaps in TOA sampling. Defaults to True.
-        toaerr (float or array-like, optional): TOA error in seconds. If float, uses the same for all. If None, random between 1e-7 and 1e-5 s. Defaults to None.
-        pdist (float or list, optional): Pulsar distances in kpc. If float, uses the same for all. If None, random between 0.5-1.5 kpc. Defaults to None.
-        freqs (list, optional): Observing frequencies in MHz. Defaults to [1400].
-        isotropic (bool, optional): Whether to place pulsars isotropically on the sky. Defaults to False.
-        backends (str or list, optional): Backend names for each pulsar. If str, uses for all. If None, generates random backends. Defaults to None.
-        noisedict (dict, optional): Noise parameter dictionary. Defaults to None.
-        custom_model (dict, optional): Custom noise model parameters. Defaults to None.
-        ephem (str, optional): Ephemeris to use. Defaults to None.
-
-    Returns:
-        list: List of fake pulsar objects.
-    """
-
-    if isotropic:
-        # Fibonacci sequence on sphere
-        i = np.arange(0, npsrs, dtype=float) + 0.5
-        golden_ratio = (1 + 5**0.5)/2
-        costhetas = 1 - 2*i/npsrs
-        phis = np.mod(2 * np.pi * i / golden_ratio, 2*np.pi)
-    else:
-        costhetas = np.random.uniform(-1., 1., size=npsrs)
-        phis = np.random.uniform(0., 2*np.pi, size=npsrs)
-
-    # Observation time for each pulsar
-    if Tobs is None:
-        Tobs = np.random.uniform(10, 20, size=npsrs)
-    elif isinstance(Tobs, float) or isinstance(Tobs, int):
-        Tobs = Tobs * np.ones(npsrs)
-
-    # Number of TOAs for each pulsar
-    yr = 365.25*24*3600
-    if ntoas is None:
-        cadence = 7 * 24*3600 # days
-        # draw F0 and correct cadence wrt F0
-        F0 = np.random.uniform(200, 300, size=npsrs)
-        d_cadence = (F0 * cadence - np.floor(F0 * cadence )) / F0
-        cadence = cadence - d_cadence
-        ntoas = np.int32(Tobs * 365.25 * 24 * 3600 / cadence)
-    elif isinstance(ntoas, float) or isinstance(ntoas, int):
-        F0 = 200 * np.ones(npsrs)
-        ntoas = np.int32(ntoas * np.ones(npsrs))
-        cadence = Tobs * yr / (ntoas - 1)
-
-    # Init TOAs from latest observation time
-    Tmax = np.amax(Tobs)
-
-    # Make unevenly sampled TOAs if gaps is True
-    if gaps:
-        gap_odds = [True, True, True, False] # one out of five
-        keep = [np.random.choice(gap_odds, size=ntoa) for ntoa in ntoas]
-        toas = [(Tmax - Tobs[i])*yr + np.arange(1, ntoas[i]+1)*cadence[i] for i in range(npsrs)]
-        toas = [toas[i][keep[i]] for i in range(npsrs)]
-    else:
-        toas = [(Tmax - Tobs[i])*yr + np.arange(1, ntoas[i]+1)*cadence[i] for i in range(npsrs)]
-    if toaerr is None:
-        toaerr = np.power(10, np.random.uniform(-7., -5., size=npsrs))
-    elif isinstance(toaerr, float):
-        toaerr = toaerr * np.ones(npsrs)
-
-    # Init pulsar distances
-    if pdist is None:
-        dists = np.random.uniform(0.5, 1.5, size=npsrs)
-        pdist = [[dist, 0.2*dist] for dist in dists]
-    elif isinstance(pdist, float):
-        pdist = [[pdist, 0.2*pdist]] * npsrs
-
-    # Init backends
-    if backends is None:
-        backends = []
-        for _ in range(npsrs):
-            n_backends = np.random.randint(1, 3)
-            backends.append(['backend_'+str(k) for k in range(n_backends)])
-    elif isinstance(backends, str):
-        backends = [[backends]] * npsrs
-    elif isinstance(backends, list):
-        if not isinstance(backends[0], list):
-            backends = [backends] * npsrs
-    
-    # Init noise properties
-
-
-    assert (len(Tobs) == npsrs), '"Tobs" must be same size as "npsrs"'
-    assert (len(ntoas) == npsrs), '"ntoas" must be same size as "npsrs"'
-    assert (len(toaerr) == npsrs), '"toaerr" must be same size as "npsrs"'
-    assert (len(pdist) == npsrs), '"pdist" must be same size as "npsrs"'
-    assert (len(backends) == npsrs), '"backends" must be same size as "npsrs"'
-
-    # Create pulsars and add noises
-    psrs = []
-    for i in range(npsrs):
-        if custom_model is None:
-            custom_model = None
-        psr = Pulsar(toas[i], toaerr[i], np.arccos(costhetas[i]), phis[i], pdist[i], freqs=freqs, backends=backends[i], custom_noisedict=noisedict, custom_model=custom_model, tm_params={'F0':(F0[i], np.random.uniform(1e-13, 1e-12))}, ephem=ephem)
-        psr.add_white_noise()
-        try:
-            psr.add_red_noise(spectrum='powerlaw', log10_A=psr.noisedict[psr.name+'_red_noise_log10_A'], gamma=psr.noisedict[psr.name+'_red_noise_gamma'])
-        except:
-            psr.add_red_noise(spectrum='powerlaw', log10_A=np.random.uniform(-17., -13), gamma=np.random.uniform(1, 5))
-        
-        try:
-            psr.add_dm_noise(spectrum='powerlaw', log10_A=psr.noisedict[psr.name+'_dm_gp_log10_A'], gamma=psr.noisedict[psr.name+'_dm_gp_gamma'])
-        except:
-            psr.add_dm_noise(spectrum='powerlaw', log10_A=np.random.uniform(-17., -13), gamma=np.random.uniform(1, 5))
-        
-        try:
-            psr.add_chromatic_noise(spectrum='powerlaw', log10_A=psr.noisedict[psr.name+'_chrom_gp_log10_A'], gamma=psr.noisedict[psr.name+'_chrom_gp_gamma'])
-        except:
-            psr.add_chromatic_noise(spectrum='powerlaw', log10_A=np.random.uniform(-17., -13), gamma=np.random.uniform(1, 5))
-        psrs.append(psr)
-
-    return psrs
-
-
-
 def setup_pta(run_config: dict, 
               PTA: dict,
-              keep_DM_columns: bool = False) -> object:
-    """
-    Setup pta object and fill in PTA dictionary
-    
+              keep_DM_columns: bool = False,
+              thin_factor: int = 1) -> tuple:
+    """Assemble a synthetic PTA configuration and initialize the corresponding model.
+
     Parameters
     ----------
-    run_config: dict
-        Run configuration
-    PTA: dict
-        PTA configuration
-    keep_DM_columns: bool
-        Indicate whether to keep or not DM columns of the design matrix
-        
+    run_config : dict
+        Configuration describing the run setup and observational assumptions.
+    PTA : dict
+        PTA configuration parameters.
+    keep_DM_columns : bool, optional
+        If True, retain the full dispersion-measure design matrix.
+    thin_factor : int, optional
+        Factor by which the PTA sampling is reduced to speed up calculations.
+
     Returns
     -------
-    pta: object
-        Enterprise pta object
+    tuple
+        PTA object and parameter dictionary used for SNR evaluation.
     """
 
     # Compute Tspan of the PTA
@@ -334,9 +236,17 @@ def setup_pta(run_config: dict,
     # Compute N_ToA of the PTA
     PTA_f_samp = (1 / (PTA['cadence'] * u.day)).to(u.Hz)
     PTA['N_ToA'] = get_N_ToAs_for_exact_Tobs(PTA_Tobs.to(u.s), PTA_f_samp)
+    print(f"The PTA should have N_ToAs: {PTA['N_ToA']} ToAs", flush=True)
+    # Apply the thinning factor to reduce the number of ToAs (and speed up computations)
+    PTA['N_ToA'] = PTA['N_ToA'] // thin_factor
+    if thin_factor > 1:
+        print(f"Applying a thinning factor of {thin_factor}, the PTA will have N_ToAs: {PTA['N_ToA']} ToAs", flush=True)
     
     # Define the noise properties of the PTA pulsars
-    nbin_RN = get_nbin_from_Tobs(PTA_Tobs.to(u.s), fmax=1e-7 * u.Hz)
+    nbin_RN = get_nbin_from_Tobs(PTA_Tobs.to(u.s),
+                                 # NOTE: you might want to increase fmax is noise is flatter
+                                 fmax=7e-8 * u.Hz)
+    print(f"Using {nbin_RN} Fourier bins for the red noise.", flush=True)
     
     # Add RN only
     RN = PTA['frac_RN'] > 0
@@ -362,9 +272,7 @@ def setup_pta(run_config: dict,
                                      ntoas=PTA['N_ToA'],
                                      gaps=PTA['gaps'],
                                      toaerr=PTA['RMS'],
-                                     freqs=[1400],
                                      isotropic=PTA['isotropic'],
-                                     backends=['NUPPI.1400'],
                                      noisedict=noisedict,
                                      custom_model=custom_model)
     
@@ -377,9 +285,9 @@ def setup_pta(run_config: dict,
     # Define t0
     PTA['t0'] = min([min(psr.toas) for psr in PTA['pulsars']])
 
-    # Store toas
+    # Store toas and Apply the thinning factor
     PTA['psr_toas'] = np.array([psr.toas for psr in PTA['pulsars']])
-    
+
     # Initialize the pta object
     pta_noisedict = get_pta_noisedict(PTA['pulsars'])
     
@@ -408,22 +316,28 @@ def setup_pta(run_config: dict,
             pta_params.update({f"{psr.name}_red_noise_log10_A": PTA['log10_A_RN']})
             pta_params.update({f"{psr.name}_red_noise_gamma": PTA['gamma_RN']})
     
-    # Fix the GWB parameters to values consistent with PTA observations
     pta_params.update({"gw_log10_A": float(np.log10(run_config['hc_ref']))})
     pta_params.update({"gw_gamma": 13. / 3}) # NOTE: fixing to the fiducial 13/3 value
-    
     print("PTA parameter vector used:", pta_params, flush=True)
+
+    # Store the parameter vector
+    pta.setup_pars = pta_params
+
+    # Overwrite signal collections to avoid caching
+    # NOTE: this can be removed when using jax
+    # for ip, psr in enumerate(PTA['pulsars']):
+    #     pta._signalcollections[ip] = cw.sigCollection_no_cache(pta._signalcollections[ip])(psr)
 
     ### Build the array of design matrices, Ninv and Cholesky Decomposition
     # Store the Cholesky decompositions
     PTA['Sig_cf_s'] = build_CholFactors(pta, pta_params)
 
     # Get Ninv vector of each pulsar (NOTE: requires N to be diagonal)
-    assert np.all([N.dim == 1 for N in pta.get_ndiag(pta_params)]), "N is not diagonal, check the pta model"
+    assert np.all([N.ndim == 1 for N in pta.get_ndiag(pta_params)]), "N is not diagonal, check the pta model"
     PTA['Ninv_s'] = np.array([1. / N for N in pta.get_ndiag(pta_params)])
 
-    # Get the design matrices
-    PTA['F_s'] = np.array(pta.get_basis(pta_params))
+    # Get the design matrices transposes
+    PTA['FT_s'] = np.array([F.T for F in pta.get_basis(pta_params)])
 
     ### Set the positions and distances of the pulsars to the desired PTA
     if PTA['psrs_pos'] is not None:

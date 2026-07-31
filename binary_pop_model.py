@@ -8,35 +8,35 @@ from astropy import constants as const
 from astropy import units as u
 from astropy.cosmology import Planck18
 
+from utils import get_mids
+
 
 def smbhb_density(log10_M: float, z: float, alpha: float, log10_M_star: float,
                   beta: float, z0: float, n0_dot: float, **kwargs) -> float:
-    """
-        Schechter-like SMBHB number density per unit comoving volume as a function of
-        log10 chirp mass and redshift
-        [Source: https://github.com/astrolamb/pop_synth/blob/main/scripts/pop_synth.py]
+    """Return the comoving SMBHB number density as a function of chirp mass and redshift.
 
-        Parameters
-        ----------
-        z : float
-            Redshift
-        log10_M : float
-            log10 of the chirp mass
-        alpha : float
-            Slope of the mass function
-        log10_M_star : float
-            Characteristic mass of the mass function
-        beta : float
-            Slope of the redshift function
-        z0 : float
-            Characteristic redshift of the redshift function
-        n0_dot : float
-            Normalization of the number density in Mpc^{-3} / Gyr
+    Parameters
+    ----------
+    log10_M : float
+        Rest-frame chirp mass in solar masses, expressed as log10(M_c / M_sun).
+    z : float
+        Redshift of the binary population element.
+    alpha : float
+        Slope of the SMBHB mass function.
+    log10_M_star : float
+        Characteristic mass scale of the mass function.
+    beta : float
+        Redshift evolution slope.
+    z0 : float
+        Characteristic redshift of the population model.
+    n0_dot : float
+        Normalization of the comoving number density.
 
-        Returns
-        -------
-        float
-            log10 SMBHB number density per unit log10_M and unit redshift
+    Returns
+    -------
+    float
+        Number density per unit comoving volume, per unit logarithmic chirp mass,
+        and per unit redshift.
     """
 
     # transform number density normalisation to the right units
@@ -56,8 +56,23 @@ def smbhb_density(log10_M: float, z: float, alpha: float, log10_M_star: float,
 
 def getdndlogMcr(log10_Mcr, pop_model, 
                  z_min, z_max):
-    """
-    Compute the comoving merger density integrated over redshift
+    """Return the redshift-integrated merger density for a chirp-mass grid.
+
+    Parameters
+    ----------
+    log10_Mcr : array-like
+        Chirp masses in solar masses, expressed as log10(M_c / M_sun).
+    pop_model : dict
+        SMBHB population parameters used by smbhb_density.
+    z_min : float
+        Lower redshift bound of the integration.
+    z_max : float
+        Upper redshift bound of the integration.
+
+    Returns
+    -------
+    ndarray
+        Merger density integrated over the specified redshift interval.
     """
 
     log10_Mcr_s = np.atleast_1d(log10_Mcr)
@@ -66,6 +81,18 @@ def getdndlogMcr(log10_Mcr, pop_model,
 
     for k, log10_Mcr in enumerate(log10_Mcr_s):
         def integrand_num(z):
+            """Return the integrand for the redshift integral at fixed chirp mass.
+
+            Parameters
+            ----------
+            z : float
+                Redshift.
+
+            Returns
+            -------
+            float
+                SMBHB density at the selected chirp mass and redshift.
+            """
             return smbhb_density(log10_Mcr, z, **pop_model)
         
         arr[k] = integrate.quad(integrand_num,
@@ -75,8 +102,23 @@ def getdndlogMcr(log10_Mcr, pop_model,
 
 def getdndz(z, pop_model, 
             log10_Mcr_min, log10_Mcr_max):
-    """
-    Compute the comoving merger density integrated over log chirp mass
+    """Return the chirp-mass-integrated merger density for a redshift grid.
+
+    Parameters
+    ----------
+    z : array-like
+        Redshift values.
+    pop_model : dict
+        SMBHB population parameters used by smbhb_density.
+    log10_Mcr_min : float
+        Lower bound of the chirp-mass integration range.
+    log10_Mcr_max : float
+        Upper bound of the chirp-mass integration range.
+
+    Returns
+    -------
+    ndarray
+        Merger density integrated over the specified chirp-mass interval.
     """
 
     z_s = np.atleast_1d(z)
@@ -85,6 +127,18 @@ def getdndz(z, pop_model,
 
     for k, z in enumerate(z_s):
         def integrand_num(log10_Mcr):
+            """Return the integrand for the chirp-mass integral at fixed redshift.
+
+            Parameters
+            ----------
+            log10_Mcr : float
+                Chirp mass in log10(M_sun).
+
+            Returns
+            -------
+            float
+                SMBHB density at the selected mass and redshift.
+            """
             return smbhb_density(log10_Mcr, z, **pop_model)
         
         arr[k] = integrate.quad(integrand_num,
@@ -97,23 +151,43 @@ def analytic_hc2(f: float,
                  model: dict, 
                  xi_I_bounds: dict,
                  Mcr_scaling: float = 1e8) -> float:
-    """
-    Compute the characteristic strain squared at a given frequency f for a given 
-    SMBHB population model.
+    """Return the analytic characteristic strain contribution from the SMBHB population.
 
-    Args:
-        f (float): Observer frequency.
-        smbhb_density (SevenFloatFn): Schechter-like comoving merger density function.
-        model (dict): SMBHB population model parameters.
-        xi_I_bounds (dict): Integral bounds for chirp mass and redshift.
-        Mcr_scaling (float, optional): Numerical scaling factor. Defaults to 1e8.
+    Parameters
+    ----------
+    f : float
+        Gravitational-wave frequency in Hz.
+    smbhb_density : callable
+        SMBHB number-density model as a function of chirp mass and redshift.
+    model : dict
+        Population parameters passed to the density model.
+    xi_I_bounds : dict
+        Integration bounds for chirp mass and redshift.
+    Mcr_scaling : float, optional
+        Mass scaling used to improve numerical stability during integration.
 
-    Returns:
-        float: h_c²(f)
+    Returns
+    -------
+    float
+        Characteristic strain amplitude squared, h_c^2(f), for the population.
     """
     
     # Define the (1+z)^{-1/3} (GMc,r)^{5/3} integrand
     def integrand_num(log10_Mcr: float, z: float) -> float:
+        """Return the mass-redshift integrand entering the characteristic-strain calculation.
+
+        Parameters
+        ----------
+        log10_Mcr : float
+            Chirp mass in log10(M_sun).
+        z : float
+            Redshift.
+
+        Returns
+        -------
+        float
+            Population contribution to the h_c^2 integral at the specified point.
+        """
         Mcr = 10 ** log10_Mcr
         
         # Scale Mcr units to avoid numerical issues

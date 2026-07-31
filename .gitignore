@@ -1,2 +1,4 @@
 *.pyc
 */__pycache__/*
+results/v0/
+for-release/

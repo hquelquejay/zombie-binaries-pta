@@ -1,11 +1,12 @@
+#!/usr/bin/env python3
 """
-Compute detection efficiency of zombie binaries for a given PTA configuration over a (Mcr, z) grid.
+Compute efficiency and Mcr/z grids for zombie SMBHB populations.
 
 Author: Hippolyte Quelquejay Leclere
-Date: March 2026
 """
 
 import argparse
+import pickle
 import sys
 from pathlib import Path
 
@@ -13,62 +14,48 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import astropy.units as u
+import jax
 import numpy as np
 from astropy.cosmology import Planck18
+
+# Ensure float64 are used to handle large masses
+jax.config.update("jax_enable_x64", True)
 
 import PTA as pta
 import utils
 import zombie_rate as rate
 
 
-def clean_PTA_dict(PTA: dict) -> dict:
-    """
-    Clean the PTA dictionary before saving it to yaml file
-
-    Args:
-        PTA (dict): Initial PTA dictionary
-
-    Returns:
-        dict: Cleaned PTA dictionary
-    """
-
-    PTA_copy = PTA.copy()
-    PTA_copy.pop('pta', None)
-    PTA_copy.pop('pulsars', None)
-    PTA_copy.pop('psr_pos_s', None)
-    PTA_copy.pop('psr_toas', None)
-    PTA_copy.pop('psr_T_s', None)
-    PTA_copy.pop('Sig_cf_s', None)
-    PTA_copy.pop('Ninv_s', None)
-    PTA_copy.pop('F_s', None)
-    # Store t0 as float
-    PTA_copy['t0'] = float(PTA_copy['t0'])
-    # Update Ta_max
-    Ta_max = float(np.round(PTA['Ta_max'].to(u.yr).value, 2))
-    PTA_copy['Ta_max'] = Ta_max # convert to value for yaml
-
-    return PTA_copy
-
-def save_results(efficiency_grid: np.ndarray,
+def save_results(SNRs_dict: dict,
+                 Nc_dict: dict,
+                 efficiency_grid: np.ndarray,
                  grids: dict,
                  output_dir: str):
-    """
-    Save efficiency and grid results to npz file.
-    
+    """Save the efficiency data products and parameter grids to disk.
+
     Parameters
     ----------
+    SNRs_dict : dict
+        SNR values recorded for each grid point.
+    Nc_dict : dict
+        Number of contributing pulsars recorded for each grid point.
     efficiency_grid : np.ndarray
-        Efficiency grid
+        Detection-efficiency grid as a function of chirp mass and redshift.
     grids : dict
-        Parameter grids dictionary
+        Grid metadata for mass, redshift, and related coordinates.
     output_dir : str
-        Output directory path
+        Directory where the output files are written.
+
+    Returns
+    -------
+    None
+        Files are saved to the requested output directory.
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    npz_file = output_path / f"efficiency-grid.npz"
-    
+    # Save efficiency grid and associated parameter grids to npz file
+    npz_file = output_path / "efficiency-grid.npz"
     np.savez(npz_file,
              efficiency=efficiency_grid,
              log10_Mcr_mids=grids['log10_Mcr_mids'],
@@ -76,26 +63,40 @@ def save_results(efficiency_grid: np.ndarray,
              z_edges=grids['z_edges'],
              logz=grids['logz'])
     
-    print(f"Results saved to {npz_file}", flush=True)
+    # Save the SNRs dictionary
+    SNRs_file = output_path / "SNRs_dict.pkl"
+    with open(SNRs_file, 'wb') as f:
+        pickle.dump(SNRs_dict, f)
+
+    # Save the number of contributing pulsars
+    Nc_file = output_path / "Nc_dict.pkl"
+    with open(Nc_file, 'wb') as f:
+        pickle.dump(Nc_dict, f)
+    
+    print(f"Results saved to {output_path}", flush=True)
 
 
 def plot_efficiency_grid(efficiency_grid: np.ndarray,
                          grids: dict,
                          output_dir: str,
                          run_config: dict):
-    """
-    Create and save 2D plot of efficiency grid.
+    """Create and save the 2D efficiency plots for the computed grid.
 
     Parameters
     ----------
     efficiency_grid : np.ndarray
-        Efficiency grid
+        Detection-efficiency values over the mass-redshift grid.
     grids : dict
-        Parameter grids dictionary
+        Parameter-grid metadata used for axis formatting.
     output_dir : str
-        Output directory path
-    run_config: dict
-        Run parameters dictionary
+        Directory where the plots are saved.
+    run_config : dict
+        Run configuration containing the detection threshold.
+
+    Returns
+    -------
+    None
+        Plot files are written to disk.
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -118,9 +119,15 @@ def plot_efficiency_grid(efficiency_grid: np.ndarray,
 
 
 def main():
-    """Main execution function."""
+    """Run the full zombie-efficiency pipeline for one or more configuration files.
+
+    Returns
+    -------
+    None
+        The script computes efficiency grids, saves results, and writes plots.
+    """
     parser = argparse.ArgumentParser(
-        description="Compute efficiency over a log_10 Mcr / (log_10) z grid for zombie SMBHBs"
+        description="Compute efficiency over log_10 Mcr / (log_10) z grids for zombie SMBHBs"
     )
     parser.add_argument("config_files", nargs='+', type=str,
                        help="Run configuration file(s)")
@@ -153,36 +160,48 @@ def main():
         fth = run_config['fth'] * u.Hz
         
         # Setup pta object and associated params
-        PTA['pta'] = pta.setup_pta(run_config, PTA)
+        PTA['pta'] = pta.setup_pta(run_config, PTA, 
+                                   thin_factor=run_config["toas_thin_factor"])
+        
+        # Create the outdir directory
+        output_path = Path(args.outdir)
+        output_path.mkdir(parents=True, exist_ok=True)
         
         # Compute efficiency grid
-        efficiency_grid = rate.compute_efficiency_2d_parallel_jax(
-                                                    log10_Mcr_mids=grids['log10_Mcr_mids'],
-                                                    z_mids=grids['z_mids'],
-                                                    N_bin=run_config['N_bin'],
-                                                    SNR_thresh=run_config['SNR_thresh'],
-                                                    PTA=PTA,
-                                                    fth=fth,
-                                                    N_zombies_per_bin=run_config['N_zombies_per_bin'],
-                                                    n_jobs=args.ncpu,
-                                                    seed=run_config['seed'])
+        eff_grid, SNRs_dict, Nc_dict = rate.compute_efficiency_2d_cached_jax_threaded(
+                                                log10_Mcr_mids=grids['log10_Mcr_mids'],
+                                                z_mids=grids['z_mids'],
+                                                N_bin=run_config['N_bin'],
+                                                SNR_thresh=run_config['SNR_thresh'],
+                                                PTA=PTA,
+                                                fth=fth,
+                                                N_zombies_per_bin=run_config['N_zombies_per_bin'],
+                                                N_chunk=run_config['chunk_size'],
+                                                n_jobs=args.ncpu,
+                                                thin_factor=run_config["toas_thin_factor"],
+                                                seed=run_config['seed'],
+                                                Npsr_min=run_config['Npsr_min'],
+                                                outdir=args.outdir)
         
         # Save results
-        save_results(efficiency_grid, grids, 
+        save_results(SNRs_dict,
+                     Nc_dict, 
+                     eff_grid,
+                     grids,
                      output_dir=args.outdir)
         
         # Create plot
-        plot_efficiency_grid(efficiency_grid, grids,
+        plot_efficiency_grid(eff_grid, grids,
                              output_dir=args.outdir + "/plots",
                              run_config=run_config)
 
         
         ### Save the config and PTA used in the run for reproducibility (in yaml format)
         # Clean the PTA dict first
-        PTA_copy = clean_PTA_dict(PTA)
+        PTA_copy = PTA.copy()
         
+        # Save configs
         utils.save_configs(run_config, PTA_copy, output_dir=args.outdir)
-
         print(f"\n{config_file} has been successfully processed", flush=True)
 
 

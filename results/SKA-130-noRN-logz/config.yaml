@@ -1,7 +1,7 @@
 N_bin: 100
 N_zombies_per_bin: 10000
 Npsr_min: 2
-PTA_config: EPTA-noRN-nogaps
+PTA_config: SKA-130-noRN-nogaps
 SNR_thresh: 3
 bounds:
   log10_Mcr_max: 11
